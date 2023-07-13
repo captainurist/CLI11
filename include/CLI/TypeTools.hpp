@@ -947,19 +947,22 @@ inline std::int64_t to_flag_value(std::string val) {
     return ret;
 }
 
+template <typename T>
+bool lexical_cast(const std::string &input, T &output);
+
 /// Integer conversion
 template <typename T,
           enable_if_t<classify_object<T>::value == object_category::integral_value ||
                           classify_object<T>::value == object_category::unsigned_integral,
                       detail::enabler> = detail::dummy>
-bool lexical_cast(const std::string &input, T &output) {
+bool lexical_cast_internal(const std::string &input, T &output) {
     return integral_conversion(input, output);
 }
 
 /// char values
 template <typename T,
           enable_if_t<classify_object<T>::value == object_category::char_value, detail::enabler> = detail::dummy>
-bool lexical_cast(const std::string &input, T &output) {
+bool lexical_cast_internal(const std::string &input, T &output) {
     if(input.size() == 1) {
         output = static_cast<T>(input[0]);
         return true;
@@ -970,7 +973,7 @@ bool lexical_cast(const std::string &input, T &output) {
 /// Boolean values
 template <typename T,
           enable_if_t<classify_object<T>::value == object_category::boolean_value, detail::enabler> = detail::dummy>
-bool lexical_cast(const std::string &input, T &output) {
+bool lexical_cast_internal(const std::string &input, T &output) {
     try {
         auto out = to_flag_value(input);
         output = (out > 0);
@@ -988,7 +991,7 @@ bool lexical_cast(const std::string &input, T &output) {
 /// Floats
 template <typename T,
           enable_if_t<classify_object<T>::value == object_category::floating_point, detail::enabler> = detail::dummy>
-bool lexical_cast(const std::string &input, T &output) {
+bool lexical_cast_internal(const std::string &input, T &output) {
     if(input.empty()) {
         return false;
     }
@@ -1001,7 +1004,7 @@ bool lexical_cast(const std::string &input, T &output) {
 /// complex
 template <typename T,
           enable_if_t<classify_object<T>::value == object_category::complex_number, detail::enabler> = detail::dummy>
-bool lexical_cast(const std::string &input, T &output) {
+bool lexical_cast_internal(const std::string &input, T &output) {
     using XC = typename wrapped_type<T, double>::type;
     XC x{0.0}, y{0.0};
     auto str1 = input;
@@ -1033,7 +1036,7 @@ bool lexical_cast(const std::string &input, T &output) {
 /// String and similar direct assignment
 template <typename T,
           enable_if_t<classify_object<T>::value == object_category::string_assignable, detail::enabler> = detail::dummy>
-bool lexical_cast(const std::string &input, T &output) {
+bool lexical_cast_internal(const std::string &input, T &output) {
     output = input;
     return true;
 }
@@ -1042,7 +1045,7 @@ bool lexical_cast(const std::string &input, T &output) {
 template <
     typename T,
     enable_if_t<classify_object<T>::value == object_category::string_constructible, detail::enabler> = detail::dummy>
-bool lexical_cast(const std::string &input, T &output) {
+bool lexical_cast_internal(const std::string &input, T &output) {
     output = T(input);
     return true;
 }
@@ -1051,7 +1054,7 @@ bool lexical_cast(const std::string &input, T &output) {
 template <
     typename T,
     enable_if_t<classify_object<T>::value == object_category::wstring_assignable, detail::enabler> = detail::dummy>
-bool lexical_cast(const std::string &input, T &output) {
+bool lexical_cast_internal(const std::string &input, T &output) {
     output = widen(input);
     return true;
 }
@@ -1059,7 +1062,7 @@ bool lexical_cast(const std::string &input, T &output) {
 template <
     typename T,
     enable_if_t<classify_object<T>::value == object_category::wstring_constructible, detail::enabler> = detail::dummy>
-bool lexical_cast(const std::string &input, T &output) {
+bool lexical_cast_internal(const std::string &input, T &output) {
     output = T{widen(input)};
     return true;
 }
@@ -1067,7 +1070,7 @@ bool lexical_cast(const std::string &input, T &output) {
 /// Enumerations
 template <typename T,
           enable_if_t<classify_object<T>::value == object_category::enumeration, detail::enabler> = detail::dummy>
-bool lexical_cast(const std::string &input, T &output) {
+bool lexical_cast_internal(const std::string &input, T &output) {
     typename std::underlying_type<T>::type val;
     if(!integral_conversion(input, val)) {
         return false;
@@ -1081,7 +1084,7 @@ template <typename T,
           enable_if_t<classify_object<T>::value == object_category::wrapper_value &&
                           std::is_assignable<T &, typename T::value_type>::value,
                       detail::enabler> = detail::dummy>
-bool lexical_cast(const std::string &input, T &output) {
+bool lexical_cast_internal(const std::string &input, T &output) {
     typename T::value_type val;
     if(lexical_cast(input, val)) {
         output = val;
@@ -1094,7 +1097,7 @@ template <typename T,
           enable_if_t<classify_object<T>::value == object_category::wrapper_value &&
                           !std::is_assignable<T &, typename T::value_type>::value && std::is_assignable<T &, T>::value,
                       detail::enabler> = detail::dummy>
-bool lexical_cast(const std::string &input, T &output) {
+bool lexical_cast_internal(const std::string &input, T &output) {
     typename T::value_type val;
     if(lexical_cast(input, val)) {
         output = T{val};
@@ -1107,7 +1110,7 @@ bool lexical_cast(const std::string &input, T &output) {
 template <
     typename T,
     enable_if_t<classify_object<T>::value == object_category::number_constructible, detail::enabler> = detail::dummy>
-bool lexical_cast(const std::string &input, T &output) {
+bool lexical_cast_internal(const std::string &input, T &output) {
     int val = 0;
     if(integral_conversion(input, val)) {
         output = T(val);
@@ -1127,7 +1130,7 @@ bool lexical_cast(const std::string &input, T &output) {
 template <
     typename T,
     enable_if_t<classify_object<T>::value == object_category::integer_constructible, detail::enabler> = detail::dummy>
-bool lexical_cast(const std::string &input, T &output) {
+bool lexical_cast_internal(const std::string &input, T &output) {
     int val = 0;
     if(integral_conversion(input, val)) {
         output = T(val);
@@ -1140,7 +1143,7 @@ bool lexical_cast(const std::string &input, T &output) {
 template <
     typename T,
     enable_if_t<classify_object<T>::value == object_category::double_constructible, detail::enabler> = detail::dummy>
-bool lexical_cast(const std::string &input, T &output) {
+bool lexical_cast_internal(const std::string &input, T &output) {
     double val = 0.0;
     if(lexical_cast(input, val)) {
         output = T{val};
@@ -1153,7 +1156,7 @@ bool lexical_cast(const std::string &input, T &output) {
 template <typename T,
           enable_if_t<classify_object<T>::value == object_category::other && std::is_assignable<T &, int>::value,
                       detail::enabler> = detail::dummy>
-bool lexical_cast(const std::string &input, T &output) {
+bool lexical_cast_internal(const std::string &input, T &output) {
     int val = 0;
     if(integral_conversion(input, val)) {
 #ifdef _MSC_VER
@@ -1179,12 +1182,18 @@ bool lexical_cast(const std::string &input, T &output) {
 template <typename T,
           enable_if_t<classify_object<T>::value == object_category::other && !std::is_assignable<T &, int>::value,
                       detail::enabler> = detail::dummy>
-bool lexical_cast(const std::string &input, T &output) {
+bool lexical_cast_internal(const std::string &input, T &output) {
     static_assert(is_istreamable<T>::value,
                   "option object type must have a lexical cast overload or streaming input operator(>>) defined, if it "
                   "is convertible from another type use the add_option<T, XC>(...) with XC being the known type");
     return from_stream(input, output);
 }
+
+template <typename T>
+bool lexical_cast(const std::string &input, T &output) {
+    return lexical_cast_internal(input, output);
+}
+
 
 /// Assign a value through lexical cast operations
 /// Strings can be empty so we need to do a little different
